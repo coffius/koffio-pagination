@@ -5,6 +5,7 @@ import io.koff.pagination.repo.Repository
 import scala.concurrent.duration._
 
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.language.postfixOps
 
 /**
  * Example of recursive approach
@@ -21,9 +22,14 @@ object RecursiveMain {
     Await.result(result, WaitTime)
   }
 
+  /**
+   * Execute this function for each page of user wares
+   */
   private def forWarePage(user: User, page: PageRequest): Future[Boolean] = {
     for {
+      //get page of user wares
       wares <- repo.getPageOfWares(user, page)
+      //send email
       futSeq = wares.map { ware => emailService.sendEmail(user, ware) }
       _ <- Future.sequence(futSeq)
     } yield {
@@ -31,16 +37,28 @@ object RecursiveMain {
     }
   }
 
+  /**
+   * Execute this function for each page of users
+   */
   private def forUserPage(page: PageRequest): Future[Boolean] = {
     for{
+      //get a page of users
       users <- repo.getPageOfUsers(page)
-      futSeq = users.map(forWarePage(_, page))
+      //traverse though user wares for each user
+      futSeq = users.map(user => forEachPage()(forWarePage(user, _)))
       _ <- Future.sequence(futSeq)
     } yield {
       users.nonEmpty
     }
   }
 
+  /**
+   * Recursive function for traverse through a collection page by page using `func`
+   * @param currPage current page
+   * @param func function which is called on each step of recursion
+   * @param ctx execution context
+   * @return result future
+   */
   private def forEachPage(currPage: PageRequest = PageRequest.FirstPage)
                          (func: PageRequest => Future[Boolean])
                          (implicit ctx: ExecutionContext): Future[_] = {
